@@ -8,6 +8,44 @@
 use crate::pydantic_testcase;
 use crate::test::pydantic::util::pydantic_env;
 
+// Verified with Pydantic 2.14.4 on Python 3.12: an annotation-only redeclaration
+// removes an inherited value or factory default. Inheritance without redeclaration
+// keeps the default, so only the redeclaring subclasses require an explicit input.
+pydantic_testcase!(
+    test_constructor_redeclaration_removes_inherited_default,
+    r#"
+from typing import assert_type
+from pydantic import BaseModel, Field
+
+class ValueDefault(BaseModel):
+    x: int = 1
+
+class InheritedValue(ValueDefault):
+    pass
+
+class RedeclaredValue(ValueDefault):
+    x: int
+
+class FactoryDefault(BaseModel):
+    x: int = Field(default_factory=lambda: 2)
+
+class InheritedFactory(FactoryDefault):
+    pass
+
+class RedeclaredFactory(FactoryDefault):
+    x: int
+
+assert_type(ValueDefault().x, int)
+assert_type(InheritedValue().x, int)
+assert_type(FactoryDefault().x, int)
+assert_type(InheritedFactory().x, int)
+assert_type(RedeclaredValue(x=3).x, int)
+assert_type(RedeclaredFactory(x=3).x, int)
+RedeclaredValue()  # E: Missing argument `x`
+RedeclaredFactory()  # E: Missing argument `x`
+"#,
+);
+
 pydantic_testcase!(
     test_constructor_descriptor_class_schema,
     r#"

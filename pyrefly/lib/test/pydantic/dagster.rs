@@ -229,6 +229,31 @@ PlainConfig(dep=ResourceDependency[str](), creds=partial)  # E: is not assignabl
 "#,
 );
 
+// Verified with Dagster 1.13.31 and Pydantic 2.14.4 on Python 3.12: the apparent
+// resource-instance default is not a usable Pydantic default, because its class-level
+// descriptor getter raises AttributeError. Redeclaring the annotation does not supply
+// a default, so the missing-argument diagnostic below is intentional and correct.
+testcase!(
+    test_resource_redeclaration_requires_input_after_descriptor_default,
+    dagster_env(),
+    r#"
+from dagster import Config, ConfigurableResource
+
+class Creds(ConfigurableResource):
+    user: str = "u"
+
+class Parent(Config):
+    creds: Creds = Creds()
+
+class Child(Parent, ConfigurableResource):
+    creds: Creds
+
+Child(creds=Creds())
+Child(creds=Creds.configure_at_launch())
+Child()  # E: Missing argument `creds`
+"#,
+);
+
 testcase!(
     test_resource_constructor_redeclarations,
     dagster_env(),
