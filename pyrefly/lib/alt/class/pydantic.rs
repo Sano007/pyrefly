@@ -878,6 +878,23 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         }
     }
 
+    /// A class-owned schema can replace a field or union branch's input validation.
+    pub fn pydantic_type_has_custom_schema(&self, ty: &Type) -> bool {
+        match ty {
+            Type::ClassType(cls) => self
+                .get_non_synthesized_class_member_and_defining_class(
+                    cls.class_object(),
+                    &GET_PYDANTIC_CORE_SCHEMA,
+                )
+                .is_some_and(|member| !member.defining_class.is(KnownClass::PydanticBaseModel)),
+            Type::Union(union) => union
+                .members
+                .iter()
+                .any(|member| self.pydantic_type_has_custom_schema(member)),
+            _ => false,
+        }
+    }
+
     /// Check whether a metadata value can replace Pydantic's input validation.
     fn pydantic_metadata_has_custom_schema(&self, ty: &Type) -> bool {
         let cls = match ty {

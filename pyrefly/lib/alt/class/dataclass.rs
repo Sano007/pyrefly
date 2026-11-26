@@ -1343,8 +1343,9 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // Pydantic models (BaseModel/RootModel/BaseSettings) do not honor `Field(init=False)`:
         // the field still appears in the validator-driven `__init__`.
         // Pydantic dataclasses and stdlib/attrs dataclasses follow the behavior of built-in dataclasses.
+        let metadata = self.get_metadata_for_class(cls);
         let init_arg_should_be_ignored = matches!(
-            self.get_metadata_for_class(cls).pydantic_model_kind(),
+            metadata.pydantic_model_kind(),
             Some(
                 PydanticModelKind::BaseModel
                     | PydanticModelKind::RootModel
@@ -1414,10 +1415,18 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     // `__replace__` also read it, and assignment must still enforce
                     // the declared type.
                     || field_flags.pydantic_has_custom_schema
+                    || (strict
+                        && metadata.is_pydantic_model()
+                        && field_flags.converter_param.is_none()
+                        && self.pydantic_type_has_custom_schema(&field.ty()))
                 {
                     Some(self.heap.mk_any_explicit())
                 } else if dataclass.is_pydantic_lax_field(&name, &field_flags) {
                     converter_table.get(&field.ty()).cloned()
+                } else if metadata.is_pydantic_model() && field_flags.converter_param.is_none() {
+                    // Pydantic validates against the field annotation, not the descriptor's
+                    // setter. Strict checking retains the annotation's generic arguments.
+                    Some(field.ty())
                 } else {
                     field_flags.converter_param.clone()
                 };

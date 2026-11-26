@@ -84,7 +84,6 @@ PlainModel(x=Dep[int]())  # E: is not assignable to parameter `x` with type `int
 );
 
 pydantic_testcase!(
-    bug = "Strict Pydantic inputs incorrectly use the descriptor setter type",
     test_constructor_descriptor_field_strict,
     r#"
 from typing import Any, Generic, TypeVar, dataclass_transform
@@ -113,10 +112,10 @@ class ConfigStrictModel(Base):
     x: Dep[int] = Field()
 
 # Strictness does not make Pydantic validate the descriptor setter's value type.
-StrictModel(x=1)
-StrictModel(x=Dep[int]())  # E: is not assignable to parameter `x` with type `int`
-ConfigStrictModel(x=1)
-ConfigStrictModel(x=Dep[int]())  # E: is not assignable to parameter `x` with type `int`
+StrictModel(x=1)  # E: is not assignable to parameter `x` with type `Dep[int]`
+StrictModel(x=Dep[int]())
+ConfigStrictModel(x=1)  # E: is not assignable to parameter `x` with type `Dep[int]`
+ConfigStrictModel(x=Dep[int]())
 "#,
 );
 
