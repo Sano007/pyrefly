@@ -1796,6 +1796,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                 initialized_on_new_instance,
             } => {
                 let direct_annotation = Some(self.get_idx(*annot).annotation.clone());
+                let annotation_flags =
+                    self.extract_pydantic_field_from_annotation(*annot, name, metadata);
 
                 // Check if there's an inherited descriptor from a parent class.
                 // If the child has an annotation-only field with a compatible type, inherit the
@@ -1831,7 +1833,25 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     // This may not be fully sound since the parent's initial value doesn't
                     // match the child's declared type. Consider whether we should warn or
                     // error in this case.
-                    return parent_field.value.into_owned();
+                    let rewritten = annotation_flags
+                        .as_ref()
+                        .is_some_and(|flags| flags.dagster_rewritten_annotation);
+                    let mut inherited = parent_field.value.into_owned();
+                    if let ClassFieldInner::Descriptor { descriptor, .. } = &mut inherited.0 {
+                        match &mut descriptor.initialization {
+                            ClassFieldInitialization::ClassBody(Some(flags)) => {
+                                flags.dagster_rewritten_annotation = rewritten;
+                            }
+                            initialization if rewritten => {
+                                let mut flags = DataclassFieldKeywords::new();
+                                flags.dagster_rewritten_annotation = true;
+                                *initialization =
+                                    ClassFieldInitialization::ClassBody(Some(Box::new(flags)));
+                            }
+                            _ => {}
+                        }
+                    }
+                    return inherited;
                 }
 
                 let initialization = if class.module_path().is_interface()
@@ -1840,9 +1860,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         .is_some_and(|annot| annot.has_qualifier(&Qualifier::ClassVar))
                 {
                     ClassFieldInitialization::Magic
-                } else if let Some(flags) =
-                    self.extract_pydantic_field_from_annotation(*annot, name, metadata)
-                {
+                } else if let Some(flags) = annotation_flags {
                     ClassFieldInitialization::ClassBody(Some(Box::new(flags)))
                 } else {
                     ClassFieldInitialization::Uninitialized {
@@ -1943,6 +1961,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         pydantic_unchecked_metadata: flags.pydantic_unchecked_metadata
                             || flags.init_by_alias.is_some(),
                         pydantic_has_custom_schema: flags.pydantic_has_custom_schema,
+                        dagster_rewritten_annotation: flags.dagster_rewritten_annotation,
                         ..DataclassFieldKeywords::new()
                     });
                 if metadata.is_protocol()
@@ -2013,6 +2032,8 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         f.pydantic_unchecked_metadata |=
                             annotation_flags.pydantic_unchecked_metadata;
                         f.pydantic_has_custom_schema |= annotation_flags.pydantic_has_custom_schema;
+                        f.dagster_rewritten_annotation |=
+                            annotation_flags.dagster_rewritten_annotation;
                     }
                     if flags.is_some() {
                         // A field specifier with no type annotation is a definition-time error,

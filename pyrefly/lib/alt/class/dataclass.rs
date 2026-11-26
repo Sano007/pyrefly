@@ -954,6 +954,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             converter_param,
             attrs_setattr_frozen,
             pydantic_has_custom_schema: false,
+            dagster_rewritten_annotation: false,
         }
     }
 
@@ -1421,6 +1422,11 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                         && self.pydantic_type_has_custom_schema(&field.ty()))
                 {
                     Some(self.heap.mk_any_explicit())
+                } else if field_flags.dagster_rewritten_annotation
+                    && field_flags.converter_param.is_none()
+                    && let Some(ty) = self.get_dagster_init_field_type(&field.ty())
+                {
+                    Some(ty)
                 } else if dataclass.is_pydantic_lax_field(&name, &field_flags) {
                     converter_table.get(&field.ty()).cloned()
                 } else if metadata.is_pydantic_model() && field_flags.converter_param.is_none() {

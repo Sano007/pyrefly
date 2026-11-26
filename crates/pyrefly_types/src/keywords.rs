@@ -196,6 +196,8 @@ pub struct DataclassFieldKeywords {
     /// (or by Pydantic's `BeforeValidator`, `PlainValidator` or `WrapValidator`). Such a field
     /// may accept input that is not of its declared type.
     pub pydantic_has_custom_schema: bool,
+    /// The declaring Dagster resource metaclass rewrites this annotation before validation.
+    pub dagster_rewritten_annotation: bool,
 }
 
 impl DataclassFieldKeywords {
@@ -230,6 +232,7 @@ impl DataclassFieldKeywords {
             frozen: None,
             attrs_setattr_frozen: None,
             pydantic_has_custom_schema: false,
+            dagster_rewritten_annotation: false,
         }
     }
 

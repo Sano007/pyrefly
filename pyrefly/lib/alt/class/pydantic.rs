@@ -1035,6 +1035,13 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
                     .pydantic_has_custom_schema = true;
             }
 
+            if self.dagster_rewrites_annotation(annotation_expr)
+                && self.has_dagster_resource_metaclass(metadata)
+            {
+                keywords
+                    .get_or_insert_with(DataclassFieldKeywords::new)
+                    .dagster_rewritten_annotation = true;
+            }
             return keywords;
         }
         None

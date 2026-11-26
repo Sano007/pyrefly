@@ -105,7 +105,6 @@ from dagster._config.pythonic_config.resource import ResourceDependency as Resou
 // Runtime rewrite: https://github.com/dagster-io/dagster/blob/1.13.31/python_modules/dagster/dagster/_config/pythonic_config/typing_utils.py#L104-L168
 // Dependency contract: https://github.com/dagster-io/dagster/blob/1.13.31/python_modules/dagster/dagster/_config/pythonic_config/resource.py#L760-L783
 testcase!(
-    bug = "Dagster constructor inputs ignore resource annotation rewriting",
     test_resource_constructor_inputs,
     dagster_env(),
     r#"
@@ -134,13 +133,13 @@ creds = Creds(user="u")
 partial = Creds.configure_at_launch(user="u")
 partial_string = PartialResource[str](resource_cls=StringFactory, data={})
 
-client = Client(dep="x", creds=creds)  # E: is not assignable to parameter `dep`
-Client(dep=StringFactory(), creds=partial)  # E: is not assignable to parameter `dep` # E: is not assignable to parameter `creds`
-Client(dep=partial_string, creds=creds)  # E: is not assignable to parameter `dep`
-Client(dep=ResourceDefinition(resource_fn=lambda _: "x"), creds={"user": "u"})  # E: is not assignable to parameter `dep`
+client = Client(dep="x", creds=creds)
+Client(dep=StringFactory(), creds=partial)
+Client(dep=partial_string, creds=creds)
+Client(dep=ResourceDefinition(resource_fn=lambda _: "x"), creds={"user": "u"})
 Client(dep=1, creds=creds)  # E: is not assignable to parameter `dep`
 Client(dep=IntFactory(), creds=creds)  # E: is not assignable to parameter `dep`
-Client(dep="x", creds=42)  # E: is not assignable to parameter `dep` # E: is not assignable to parameter `creds`
+Client(dep="x", creds=42)  # E: is not assignable to parameter `creds`
 
 assert_type(client.dep, str)
 assert_type(client.creds, Creds)
@@ -152,7 +151,6 @@ Client("x", creds)  # E: Expected argument `dep` to be passed by name # E: Expec
 );
 
 testcase!(
-    bug = "Strict Dagster inputs reject resource values and partial resources",
     test_resource_constructor_strict_inputs,
     dagster_env(),
     r#"
@@ -167,12 +165,12 @@ class StrictClient(ConfigurableResource, strict=True):
 
 creds = Creds(user="u")
 partial = Creds.configure_at_launch(user="u")
-StrictClient(dep=creds, creds=creds)  # E: is not assignable to parameter `dep`
-StrictClient(dep=partial, creds=partial)  # E: is not assignable to parameter `dep` # E: is not assignable to parameter `creds`
-StrictClient(dep=creds, creds={"user": "u"})  # E: is not assignable to parameter `dep` # E: is not assignable to parameter `creds`
+StrictClient(dep=creds, creds=creds)
+StrictClient(dep=partial, creds=partial)
+StrictClient(dep=creds, creds={"user": "u"})
 # The declared dependency type remains checked despite the permissive runtime rewrite.
 StrictClient(dep=1, creds=creds)  # E: is not assignable to parameter `dep`
-StrictClient(dep=creds, creds=42)  # E: is not assignable to parameter `dep` # E: is not assignable to parameter `creds`
+StrictClient(dep=creds, creds=42)  # E: is not assignable to parameter `creds`
 "#,
 );
 
@@ -232,7 +230,6 @@ PlainConfig(dep=ResourceDependency[str](), creds=partial)  # E: is not assignabl
 );
 
 testcase!(
-    bug = "Local resource redeclarations retain the parent's rewrite marker",
     test_resource_constructor_redeclarations,
     dagster_env(),
     r#"
@@ -252,7 +249,7 @@ class LocalClient(Mixin, ConfigurableResource):
 creds = Creds(user="u")
 partial = Creds.configure_at_launch(user="u")
 LocalClient(creds=creds)
-LocalClient(creds=partial)  # E: is not assignable to parameter `creds`
+LocalClient(creds=partial)
 
 class Parent(ConfigurableResource):
     dep: ResourceDependency[str]
