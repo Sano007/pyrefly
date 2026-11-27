@@ -25,6 +25,7 @@ use tracing::info;
 use tracing::warn;
 
 use crate::base::Preset;
+use crate::config::BaselineMatchingMode;
 use crate::config::ConfigFile;
 use crate::migration::mypy;
 use crate::migration::mypy::ini::parse_mypy_config;
@@ -470,11 +471,15 @@ impl Args {
     }
 
     fn run(&self) -> anyhow::Result<MigrationResult> {
-        let (config, original_config_path, baseline_file) = self.load_config()?;
+        let (mut config, original_config_path, baseline_file) = self.load_config()?;
         let config_dir = original_config_path
             .parent()
             .expect("a config file path has a parent directory");
         let migrated_baseline = found_basedpyright_baseline(config_dir, baseline_file.as_deref());
+        if migrated_baseline {
+            config.baseline_matching_mode = BaselineMatchingMode::ColumnOrdered;
+            config.baseline_auto_update = true;
+        }
 
         let pyrefly_config_path = {
             if original_config_path.ends_with(ConfigFile::PYPROJECT_FILE_NAME) {
@@ -550,7 +555,6 @@ mod tests {
     use serde::Deserialize;
 
     use super::*;
-    use crate::config::BaselineMatchingMode;
     use crate::error_kind::ErrorKind;
     use crate::error_kind::Severity;
 
@@ -1273,10 +1277,15 @@ files = ["mypy.py"]
             } else {
                 parsed.try_into()?
             };
-            // TODO: Detected baselines should use basedpyright-compatible settings.
-            // https://github.com/pyrefly-org/pyrefly/issues/5783
-            assert_eq!(config.baseline_matching_mode, BaselineMatchingMode::Column);
-            assert!(!config.baseline_auto_update);
+            assert_eq!(
+                config.baseline_matching_mode,
+                if case.expect_found {
+                    BaselineMatchingMode::ColumnOrdered
+                } else {
+                    BaselineMatchingMode::Column
+                }
+            );
+            assert_eq!(config.baseline_auto_update, case.expect_found);
         }
         Ok(())
     }
