@@ -228,10 +228,13 @@ testcase!(
 from dynamic import _missing
 import dynamic
 dynamic._missing
+# No private package binding is declared for this implicit submodule.
 import pkg._sub
 from pkg import _sub
 pkg._sub.public
 import pkg_bound
+# Match Pyright: attribute access sees the package's private binding, but
+# a from-import can resolve the same submodule directly.
 pkg_bound._sub  # E: Private name `_sub` is used outside of the module where it is defined
 from pkg_bound import _sub as bound_submodule
 bound_submodule.public

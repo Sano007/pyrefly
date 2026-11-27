@@ -3741,6 +3741,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         self.error(errors, expect.attr.range(), error_kind, message);
     }
 
+    /// For Pyright compatibility, qualified access checks the name bound in the module.
+    /// Without an `__all__` export, binding `_sub` in a package's `__init__.py` makes
+    /// `pkg._sub` private, even though a from-import can resolve the same submodule
+    /// directly. `solve_import` therefore has different exclusions.
     pub(super) fn check_private_module_attribute_access(
         &self,
         base: &Type,
@@ -6353,7 +6357,10 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             && let Some(range) = x.check_deprecated
             && let Some(export) = self.exports.private_export(m, name)
         {
-            // Implicit submodules and __getattr__ fallbacks have no imported declaration.
+            // Pyright checks the resolved import declaration, not just the package's
+            // bound name. A from-import can resolve `_sub` directly as a submodule,
+            // even when package attribute access sees a private binding.
+            // A __getattr__ fallback likewise supplies no imported declaration.
             let has_declaration = match export {
                 ExportLocation::ThisModule(_) => true,
                 ExportLocation::OtherModule(source, original) => {
