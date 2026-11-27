@@ -550,6 +550,7 @@ mod tests {
     use serde::Deserialize;
 
     use super::*;
+    use crate::config::BaselineMatchingMode;
     use crate::error_kind::ErrorKind;
     use crate::error_kind::Severity;
 
@@ -968,6 +969,9 @@ include = ["basedpyright.py"]
             assert!(!written.contains("preset ="));
             assert!(!written.contains("python-platform ="));
             assert!(!result.migrated_baseline);
+            let config: ConfigFile = toml::from_str(&written)?;
+            assert_eq!(config.baseline_matching_mode, BaselineMatchingMode::Column);
+            assert!(!config.baseline_auto_update);
         }
         Ok(())
     }
@@ -1185,6 +1189,13 @@ files = ["mypy.py"]
                 expect_found: true,
             },
             Case {
+                config_name: "pyrightconfig.json",
+                config_body: "{\"baselineFile\": \"custom/baseline.json\"}\n",
+                baseline_on_disk: Some("custom/baseline.json"),
+                dry_run: false,
+                expect_found: true,
+            },
+            Case {
                 config_name: "pyproject.toml",
                 config_body: "[tool.basedpyright]\nbaselineFile = \"custom/baseline.json\"\n",
                 baseline_on_disk: Some("custom/baseline.json"),
@@ -1256,6 +1267,16 @@ files = ["mypy.py"]
                 !written.contains("baseline ="),
                 "migration wrote a baseline key into {written_name}:\n{written}"
             );
+            let parsed: toml::Value = toml::from_str(&written)?;
+            let config: ConfigFile = if written_name == "pyproject.toml" {
+                parsed["tool"]["pyrefly"].clone().try_into()?
+            } else {
+                parsed.try_into()?
+            };
+            // TODO: Detected baselines should use basedpyright-compatible settings.
+            // https://github.com/pyrefly-org/pyrefly/issues/5783
+            assert_eq!(config.baseline_matching_mode, BaselineMatchingMode::Column);
+            assert!(!config.baseline_auto_update);
         }
         Ok(())
     }
