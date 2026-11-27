@@ -36,6 +36,7 @@ use itertools::Either;
 use itertools::Itertools;
 use pyrefly_build::handle::Handle;
 use pyrefly_build::handle::SitePackagePath;
+use pyrefly_python::ast::Ast;
 use pyrefly_python::module::Module;
 use pyrefly_python::module_key::ExactModuleKey;
 use pyrefly_python::module_key::ModuleKey;
@@ -390,6 +391,8 @@ pub enum ModuleDep {
     ReexportSource(Name),
     /// `LookupExport::is_implicit_reexport`.
     IsImplicitReexport(Name),
+    /// `LookupExport::private_export`.
+    PrivateExport(Name),
     /// `LookupExport::get_deprecated`.
     GetDeprecated(Name),
     /// `LookupExport::export_origin`.
@@ -552,6 +555,7 @@ impl ModuleDeps {
             | ModuleDep::IsSpecialExport(name)
             | ModuleDep::ReexportSource(name)
             | ModuleDep::IsImplicitReexport(name)
+            | ModuleDep::PrivateExport(name)
             | ModuleDep::GetDeprecated(name)
             | ModuleDep::ExportOrigin(name)
             | ModuleDep::DocstringRange(name)
@@ -658,6 +662,7 @@ impl ModuleDep {
             ModuleDep::IsSpecialExport(_) => "is_special_export",
             ModuleDep::ReexportSource(_) => "reexport_source",
             ModuleDep::IsImplicitReexport(_) => "is_implicit_reexport",
+            ModuleDep::PrivateExport(_) => "private_export",
             ModuleDep::GetDeprecated(_) => "get_deprecated",
             ModuleDep::ExportOrigin(_) => "export_origin",
             ModuleDep::DocstringRange(_) => "docstring_range",
@@ -3773,6 +3778,17 @@ impl<'a> LookupExport for TransactionHandle<'a> {
             ModuleDep::IsImplicitReexport(name.clone()),
         )
         .unwrap_or(false)
+    }
+
+    fn private_export(&self, module: ModuleName, name: &Name) -> Option<ExportLocation> {
+        if !(Ast::is_protected_attr(name) || Ast::is_mangled_attr(name)) {
+            return None;
+        }
+        self.with_exports(
+            module,
+            |exports, lookup| exports.private_export(name, lookup),
+            ModuleDep::PrivateExport(name.clone()),
+        )?
     }
 
     fn is_special_export(&self, mut module: ModuleName, name: &Name) -> Option<SpecialExport> {

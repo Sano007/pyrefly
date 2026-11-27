@@ -75,7 +75,6 @@ use crate::tsp::type_conversion::resolve_export_location;
 use crate::types::class::Class;
 use crate::types::types::Type;
 
-// BUG: Private wildcard reexports are not diagnosed when their own __all__ changes.
 #[test]
 fn test_private_module_wildcard_visibility_changes() {
     let mut env = TestEnv::new().enable_protected_access_error();
@@ -83,7 +82,7 @@ fn test_private_module_wildcard_visibility_changes() {
     env.add("star_private", "from promoted import *\n");
     env.add("consumer", "import star_private\nstar_private._hidden\n");
     let (state, handle) = env.to_state();
-    for (own_all, expected) in [(false, 0), (true, 0), (false, 0)] {
+    for (own_all, expected) in [(false, 1), (true, 0), (false, 1)] {
         let contents = if own_all {
             "from promoted import *\n__all__ = ['_hidden']\n"
         } else {
@@ -114,7 +113,6 @@ fn test_private_module_wildcard_visibility_changes() {
     }
 }
 
-// BUG: Composed __all__ visibility changes are not diagnosed.
 #[test]
 fn test_private_module_composed_visibility_changes() {
     for compose in [
@@ -134,7 +132,7 @@ fn test_private_module_composed_visibility_changes() {
             .transaction()
             .get_errors([&handle("consumer")])
             .collect_errors();
-        assert!(initial.ordinary.is_empty());
+        assert_eq!(initial.ordinary.len(), 1);
 
         let mut transaction = state.new_committable_transaction(Require::Exports, None);
         transaction.as_mut().set_memory(vec![(
@@ -156,7 +154,7 @@ fn test_private_module_composed_visibility_changes() {
                 .is_empty()
         );
 
-        for (published, expected) in [(false, 0), (true, 0)] {
+        for (published, expected) in [(false, 1), (true, 0)] {
             let contents = if published {
                 "_hidden: int = 1\n__all__: list[str] = ['_hidden']\n"
             } else {

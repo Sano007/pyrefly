@@ -160,6 +160,7 @@ use crate::error::context::TypeCheckContext;
 use crate::error::context::TypeCheckKind;
 use crate::error::style::ErrorStyle;
 use crate::export::deprecation::parse_deprecation;
+use crate::export::exports::ExportLocation;
 use crate::export::special::SpecialExport;
 use crate::solver::solver::CallContext;
 use crate::solver::solver::QuantifiedHandle;
@@ -3740,6 +3741,35 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         self.error(errors, expect.attr.range(), error_kind, message);
     }
 
+    pub(super) fn check_private_module_attribute_access(
+        &self,
+        base: &Type,
+        attr: &Identifier,
+        errors: &ErrorCollector,
+    ) {
+        if !errors.is_active() {
+            return;
+        }
+        for ty in base.as_unions() {
+            if let Type::Module(module) = ty
+                && self
+                    .exports
+                    .private_export(ModuleName::from_parts(module.parts()), &attr.id)
+                    .is_some()
+            {
+                self.error(
+                    errors,
+                    attr.range,
+                    ErrorKind::ProtectedAccess,
+                    format!(
+                        "Private name `{}` is used outside of the module where it is defined",
+                        attr.id
+                    ),
+                );
+            }
+        }
+    }
+
     /// Populate parent methods map for find-references on reimplementations.
     /// This is done once per class before checking individual fields.
     /// Uses MRO to walk ALL ancestors (not just direct bases).
@@ -6319,6 +6349,43 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
     fn solve_import(&self, x: &ImportBinding, errors: &ErrorCollector) -> Type {
         let m = x.module;
         let name = &x.name;
+        if errors.is_active()
+            && let Some(range) = x.check_deprecated
+            && let Some(export) = self.exports.private_export(m, name)
+        {
+            // Implicit submodules and __getattr__ fallbacks have no imported declaration.
+            let has_declaration = match export {
+                ExportLocation::ThisModule(_) => true,
+                ExportLocation::OtherModule(source, original) => {
+                    if source == m
+                        && original.is_none()
+                        && self
+                            .exports
+                            .module_exists(m.append(name))
+                            .finding()
+                            .is_some()
+                    {
+                        false
+                    } else {
+                        self.exports
+                            .export_exists(source, original.as_ref().unwrap_or(name))
+                            || self
+                                .try_get_from_export(m, name.clone())
+                                .is_some_and(|ty| matches!(ty, Type::Module(_)))
+                    }
+                }
+            };
+            if has_declaration {
+                self.error(
+                    errors,
+                    x.original_name_range.unwrap_or(range),
+                    ErrorKind::ProtectedAccess,
+                    format!(
+                        "Private name `{name}` is used outside of the module where it is defined"
+                    ),
+                );
+            }
+        }
         let resolve_export = || {
             if let Some(range) = x.check_deprecated
                 && let Some(deprecation) = self.exports.get_deprecated(m, name)
@@ -6600,6 +6667,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         // This should be the case since contextual typing requires working out the class field
         // type information first, but is difficult to see from a skim.
         let base = self.expr_infer(&attr.value, errors);
+        self.check_private_module_attribute_access(&base, &attr.attr, errors);
         self.record_attribute_definition_index(
             &base,
             &attr.attr.id,
@@ -8524,6 +8592,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
             }
             Expr::Attribute(attr) => {
                 let base = self.expr_with_options(&attr.value, ExprOptions::infer(errors, None));
+                self.check_private_module_attribute_access(base.ty(), &attr.attr, errors);
                 self.record_attribute_definition_index(
                     base.ty(),
                     &attr.attr.id,

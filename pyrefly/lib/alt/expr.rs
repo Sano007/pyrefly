@@ -3144,6 +3144,7 @@ impl<'ctx, 'answer, Ans: LookupAnswer> AnswersSolver<'ctx, 'answer, Ans> {
         if !errors.is_active() {
             return self.attr_infer(base, &x.attr.id, x.range, errors, None);
         }
+        self.check_private_module_attribute_access(base.ty(), &x.attr, errors);
         let attr_errors = self.error_collector();
         let result = self.attr_infer(base, &x.attr.id, x.range, &attr_errors, None);
         // An error `Any` is reported where it arises, not at every access it flows through: a

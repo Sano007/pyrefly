@@ -447,7 +447,7 @@ pub enum ErrorKind {
     PotentialBadKeywordArgument,
     /// A property setter accepts a value type that cannot overlap the getter's return type.
     PropertyTypeMismatch,
-    /// Accessing a protected class member from outside its defining class or a subclass.
+    /// Accessing a protected class member or a private module name.
     ProtectedAccess,
     /// A protocol attribute was first defined inside a method instead of the class body.
     ProtocolImplicitlyDefinedAttribute,

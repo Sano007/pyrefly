@@ -55,16 +55,21 @@ __all__ = ["public", "_exported"]
 
 // https://github.com/pyrefly-org/pyrefly/issues/5773
 testcase!(
-    bug = "Private module imports are not checked",
     test_private_module_imports,
     env_private_module_names().enable_protected_access_error(),
     r#"
-from typing import _T as TypingT
-from lib import _hidden, __private, _T, _Class, _function
-from lib import _hidden as renamed
+from typing import _T as TypingT  # E: Private name `_T` is used outside of the module where it is defined
+from lib import (
+    _hidden,  # E: Private name `_hidden` is used outside of the module where it is defined
+    __private,  # E: Private name `__private` is used outside of the module where it is defined
+    _T,  # E: Private name `_T` is used outside of the module where it is defined
+    _Class,  # E: Private name `_Class` is used outside of the module where it is defined
+    _function,  # E: Private name `_function` is used outside of the module where it is defined
+)
+from lib import _hidden as renamed  # E: Private name `_hidden` is used outside of the module where it is defined
 from lib import public as _local_private
-from lib import __dunder__, _trailing__, _exported
-from lib import _x__, _
+from lib import __dunder__, _trailing__, _exported  # E: Private name `_trailing__` is used outside of the module where it is defined
+from lib import _x__, _  # E: Private name `_x__` is used outside of the module where it is defined
 _hidden
 renamed
 _local_private
@@ -74,29 +79,28 @@ _function()
 );
 
 testcase!(
-    bug = "Private module attributes are not checked",
     test_private_module_attributes,
     env_private_module_names().enable_protected_access_error(),
     r#"
 import lib
 import lib as alias
-lib._hidden
-lib.__private
-lib._public_alias
-lib._T
-lib._Class()
-lib._function()
-alias._hidden
+lib._hidden  # E: Private name `_hidden` is used outside of the module where it is defined
+lib.__private  # E: Private name `__private` is used outside of the module where it is defined
+lib._public_alias  # E: Private name `_public_alias` is used outside of the module where it is defined
+lib._T  # E: Private name `_T` is used outside of the module where it is defined
+lib._Class()  # E: Private name `_Class` is used outside of the module where it is defined
+lib._function()  # E: Private name `_function` is used outside of the module where it is defined
+alias._hidden  # E: Private name `_hidden` is used outside of the module where it is defined
 lib.public
 lib.__dunder__
-lib._trailing__
-lib._x__
+lib._trailing__  # E: Private name `_trailing__` is used outside of the module where it is defined
+lib._x__  # E: Private name `_x__` is used outside of the module where it is defined
 lib._
 lib._exported
-lib._hidden = 2
-lib.__private = 2
+lib._hidden = 2  # E: Private name `_hidden` is used outside of the module where it is defined
+lib.__private = 2  # E: Private name `__private` is used outside of the module where it is defined
 lib._exported = 2
-lib._hidden
+lib._hidden  # E: Private name `_hidden` is used outside of the module where it is defined
 "#,
 );
 
@@ -117,7 +121,6 @@ lib.__private = 2
 );
 
 testcase!(
-    bug = "Private module names in stubs are not checked",
     test_private_module_stub_access,
     {
         let mut env = TestEnv::new().enable_protected_access_error();
@@ -129,46 +132,61 @@ testcase!(
         env.add_with_path(
             "consumer",
             "consumer.pyi",
-            "from lib import _hidden\nimport lib\nx: lib._Class\n",
+            r#"
+from lib import _hidden  # E: Private name `_hidden` is used outside of the module where it is defined
+import lib
+x: lib._Class  # E: Private name `_Class` is used outside of the module where it is defined
+"#,
         );
         env
     },
     r#"
-from lib import _hidden, __private, __dunder__, _exported
+from lib import (
+    _hidden,  # E: Private name `_hidden` is used outside of the module where it is defined
+    __private,  # E: Private name `__private` is used outside of the module where it is defined
+    __dunder__, _exported,
+)
 import lib
-lib._hidden
-lib.__private
+lib._hidden  # E: Private name `_hidden` is used outside of the module where it is defined
+lib.__private  # E: Private name `__private` is used outside of the module where it is defined
 lib.__dunder__
 lib._exported
 "#,
 );
 
 testcase!(
-    bug = "Private module reexports are not checked",
     test_private_module_reexports,
     {
         let mut env = env_private_module_names().enable_protected_access_error();
         env.add(
             "reexport",
             r#"
-from lib import _hidden as _hidden
-from lib import _hidden as public
+from lib import _hidden as _hidden  # E: Private name `_hidden` is used outside of the module where it is defined
+from lib import _hidden as public  # E: Private name `_hidden` is used outside of the module where it is defined
 from lib import public as _renamed
 from lib import _exported as _exported
 "#,
         );
         env.add(
             "promoted",
-            "from lib import _hidden as _hidden\n__all__ = ['_hidden']\n",
+            r#"
+from lib import _hidden as _hidden  # E: Private name `_hidden` is used outside of the module where it is defined
+__all__ = ['_hidden']
+"#,
         );
         env
     },
     r#"
-from reexport import _hidden, _renamed, _exported, public
+from reexport import (
+    _hidden,  # E: Private name `_hidden` is used outside of the module where it is defined
+    _renamed,  # E: Private name `_renamed` is used outside of the module where it is defined
+    _exported,  # E: Private name `_exported` is used outside of the module where it is defined
+    public,
+)
 import reexport
-reexport._hidden
-reexport._renamed
-reexport._exported
+reexport._hidden  # E: Private name `_hidden` is used outside of the module where it is defined
+reexport._renamed  # E: Private name `_renamed` is used outside of the module where it is defined
+reexport._exported  # E: Private name `_exported` is used outside of the module where it is defined
 reexport.public
 from promoted import _hidden as promoted_hidden
 import promoted
@@ -177,7 +195,6 @@ promoted._hidden
 );
 
 testcase!(
-    bug = "Module-qualified private self access is not checked",
     test_private_module_self_access,
     TestEnv::new().enable_protected_access_error(),
     r#"
@@ -186,14 +203,13 @@ __private: int = 1
 _hidden
 __private
 import main
-main._hidden
-main.__private
-from main import _hidden as renamed  # E: Could not import `_hidden` from `main`
+main._hidden  # E: Private name `_hidden` is used outside of the module where it is defined
+main.__private  # E: Private name `__private` is used outside of the module where it is defined
+from main import _hidden as renamed  # E: Could not import `_hidden` from `main`  # E: Private name `_hidden` is used outside of the module where it is defined
 "#,
 );
 
 testcase!(
-    bug = "Private names inside submodules are not checked",
     test_private_module_dynamic_and_submodule_access,
     {
         let mut env = TestEnv::new().enable_protected_access_error();
@@ -216,17 +232,16 @@ import pkg._sub
 from pkg import _sub
 pkg._sub.public
 import pkg_bound
-pkg_bound._sub
+pkg_bound._sub  # E: Private name `_sub` is used outside of the module where it is defined
 from pkg_bound import _sub as bound_submodule
 bound_submodule.public
 _sub.public
-from pkg._sub import _private
-pkg._sub._private
+from pkg._sub import _private  # E: Private name `_private` is used outside of the module where it is defined
+pkg._sub._private  # E: Private name `_private` is used outside of the module where it is defined
 "#,
 );
 
 testcase!(
-    bug = "Private module aliases are not checked",
     test_private_module_aliases,
     {
         let mut env = env_private_module_names().enable_protected_access_error();
@@ -239,17 +254,16 @@ testcase!(
     },
     r#"
 import aliases
-from aliases import _lib
-aliases._lib
-aliases._lib._hidden
+from aliases import _lib  # E: Private name `_lib` is used outside of the module where it is defined
+aliases._lib  # E: Private name `_lib` is used outside of the module where it is defined
+aliases._lib._hidden  # E: Private name `_lib` is used outside of the module where it is defined  # E: Private name `_hidden` is used outside of the module where it is defined
 aliases.public.public
-from aliases import _root
-aliases._root
+from aliases import _root  # E: Private name `_root` is used outside of the module where it is defined
+aliases._root  # E: Private name `_root` is used outside of the module where it is defined
 "#,
 );
 
 testcase!(
-    bug = "Private wildcard reexports are not checked",
     test_private_module_wildcard_reexports,
     {
         let mut env = TestEnv::new().enable_protected_access_error();
@@ -262,9 +276,9 @@ testcase!(
         env
     },
     r#"
-from star_private import _hidden
+from star_private import _hidden  # E: Private name `_hidden` is used outside of the module where it is defined
 import star_private
-star_private._hidden
+star_private._hidden  # E: Private name `_hidden` is used outside of the module where it is defined
 from star_public import _hidden as public_hidden
 import star_public
 star_public._hidden
@@ -272,20 +286,18 @@ star_public._hidden
 );
 
 testcase!(
-    bug = "Private module mutation access is not checked",
     test_private_module_mutations,
     env_private_module_names().enable_protected_access_error(),
     r#"
 import lib
-lib._hidden += 1
-del lib._hidden
-lib.__private += 1
-del lib.__private
+lib._hidden += 1  # E: Private name `_hidden` is used outside of the module where it is defined
+del lib._hidden  # E: Private name `_hidden` is used outside of the module where it is defined
+lib.__private += 1  # E: Private name `__private` is used outside of the module where it is defined
+del lib.__private  # E: Private name `__private` is used outside of the module where it is defined
 "#,
 );
 
 testcase!(
-    bug = "Private module union access is not checked",
     test_private_module_union_access,
     {
         let mut env = env_private_module_names().enable_protected_access_error();
@@ -297,9 +309,9 @@ import sys
 import lib
 import lib2
 module = lib if sys.argv else lib2
-module._hidden
-module._hidden += 1
-del module._hidden
+module._hidden  # E: Private name `_hidden` is used outside of the module where it is defined
+module._hidden += 1  # E: Private name `_hidden` is used outside of the module where it is defined
+del module._hidden  # E: Private name `_hidden` is used outside of the module where it is defined
 "#,
 );
 
@@ -322,7 +334,6 @@ del lib._hidden
 );
 
 testcase!(
-    bug = "Dynamic private reexport attributes are not checked",
     test_private_module_dynamic_reexport,
     {
         let mut env = TestEnv::new().enable_protected_access_error();
@@ -333,12 +344,11 @@ testcase!(
     r#"
 from reexport import _missing
 import reexport
-reexport._missing
+reexport._missing  # E: Private name `_missing` is used outside of the module where it is defined
 "#,
 );
 
 testcase!(
-    bug = "Composed module exports are not checked",
     test_private_module_composed_exports,
     {
         let mut env = TestEnv::new().enable_protected_access_error();
@@ -361,9 +371,9 @@ import composed
 import extended
 composed._hidden
 extended._hidden
-from implicit import _hidden as private
+from implicit import _hidden as private  # E: Private name `_hidden` is used outside of the module where it is defined
 import implicit
-implicit._hidden
+implicit._hidden  # E: Private name `_hidden` is used outside of the module where it is defined
 "#,
 );
 
