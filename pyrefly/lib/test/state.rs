@@ -75,6 +75,115 @@ use crate::tsp::type_conversion::resolve_export_location;
 use crate::types::class::Class;
 use crate::types::types::Type;
 
+// BUG: Private wildcard reexports are not diagnosed when their own __all__ changes.
+#[test]
+fn test_private_module_wildcard_visibility_changes() {
+    let mut env = TestEnv::new().enable_protected_access_error();
+    env.add("promoted", "_hidden: int = 1\n__all__ = ['_hidden']\n");
+    env.add("star_private", "from promoted import *\n");
+    env.add("consumer", "import star_private\nstar_private._hidden\n");
+    let (state, handle) = env.to_state();
+    for (own_all, expected) in [(false, 0), (true, 0), (false, 0)] {
+        let contents = if own_all {
+            "from promoted import *\n__all__ = ['_hidden']\n"
+        } else {
+            "from promoted import *\n"
+        };
+        let mut transaction = state.new_committable_transaction(Require::Exports, None);
+        transaction.as_mut().set_memory(vec![(
+            PathBuf::from("star_private.py"),
+            Some(Arc::new(FileContents::from_source(contents.to_owned()))),
+        )]);
+        transaction
+            .as_mut()
+            .run(&[handle("consumer")], Require::Everything, None);
+        state.commit_transaction(transaction, None);
+        let errors = state
+            .transaction()
+            .get_errors([&handle("consumer")])
+            .collect_errors();
+        assert_eq!(
+            errors
+                .ordinary
+                .iter()
+                .filter(|error| error.error_kind() == ErrorKind::ProtectedAccess)
+                .count(),
+            expected,
+            "own __all__: {own_all}"
+        );
+    }
+}
+
+// BUG: Composed __all__ visibility changes are not diagnosed.
+#[test]
+fn test_private_module_composed_visibility_changes() {
+    for compose in [
+        "__all__ += provider.__all__",
+        "__all__.extend(provider.__all__)",
+    ] {
+        let mut env = TestEnv::new().enable_protected_access_error();
+        env.add(
+            "provider",
+            "_hidden: int = 1\n__all__: list[str] = ['_hidden']\n",
+        );
+        env.add("stable", "_hidden: int = 1\n__all__ = ['_hidden']\n");
+        env.add("facade", "import provider\nfrom stable import *\n");
+        env.add("consumer", "import facade\nfacade._hidden\n");
+        let (state, handle) = env.to_state();
+        let initial = state
+            .transaction()
+            .get_errors([&handle("consumer")])
+            .collect_errors();
+        assert!(initial.ordinary.is_empty());
+
+        let mut transaction = state.new_committable_transaction(Require::Exports, None);
+        transaction.as_mut().set_memory(vec![(
+            PathBuf::from("facade.py"),
+            Some(Arc::new(FileContents::from_source(format!(
+                "import provider\nfrom stable import *\n__all__ = ['provider']\n{compose}\n"
+            )))),
+        )]);
+        transaction
+            .as_mut()
+            .run(&[handle("consumer")], Require::Everything, None);
+        state.commit_transaction(transaction, None);
+        assert!(
+            state
+                .transaction()
+                .get_errors([&handle("consumer")])
+                .collect_errors()
+                .ordinary
+                .is_empty()
+        );
+
+        for (published, expected) in [(false, 0), (true, 0)] {
+            let contents = if published {
+                "_hidden: int = 1\n__all__: list[str] = ['_hidden']\n"
+            } else {
+                "_hidden: int = 1\n__all__: list[str] = []\n"
+            };
+            let mut transaction = state.new_committable_transaction(Require::Exports, None);
+            transaction.as_mut().set_memory(vec![(
+                PathBuf::from("provider.py"),
+                Some(Arc::new(FileContents::from_source(contents.to_owned()))),
+            )]);
+            transaction
+                .as_mut()
+                .run(&[handle("consumer")], Require::Everything, None);
+            state.commit_transaction(transaction, None);
+            let errors = state
+                .transaction()
+                .get_errors([&handle("consumer")])
+                .collect_errors();
+            assert_eq!(
+                errors.ordinary.len(),
+                expected,
+                "{compose}, published: {published}"
+            );
+        }
+    }
+}
+
 #[test]
 fn test_invalid_ignore_enabled_tools_config_reload() {
     let root = TempDir::new().unwrap();
